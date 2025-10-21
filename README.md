@@ -94,20 +94,4 @@ Every class only needs to talk **to the world**, not directly to each other — 
    * Start / Run the simulation,
    * Pause / Resume or add pedestrians dynamically.
 
----
-
-### 🧠 Contributors
-
-* Project Lead: **Mohammad**
-* Team: *ISE315 Autonomous Vehicle Simulation Group* (9 members)
-
----
-
-### 📅 Deadline
-
-Final submission date: **December 16, 2025**
-
----
-
-> *“A car that sees, thinks, and moves — powered only by algorithms.”*
 
