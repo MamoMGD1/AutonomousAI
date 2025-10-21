@@ -80,7 +80,7 @@ Every class only needs to talk **to the world**, not directly to each other — 
 1. Install dependencies:
    ```bash
    pip install -r requirements.txt
-````
+   ```
 
 2. Run the simulator:
 
@@ -89,7 +89,7 @@ Every class only needs to talk **to the world**, not directly to each other — 
    ```
 3. Use the UI buttons to:
 
-   * Add a car and target,
+   * Add a car and a target,
    * Select an algorithm,
    * Start / Run the simulation,
    * Pause / Resume or add pedestrians dynamically.
@@ -110,3 +110,4 @@ Final submission date: **December 16, 2025**
 ---
 
 > *“A car that sees, thinks, and moves — powered only by algorithms.”*
+
