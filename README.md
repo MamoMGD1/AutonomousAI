@@ -71,6 +71,7 @@ Each phase builds on the previous one to ensure smooth integration and stability
 
 ## 🗂️ Repository Structure
 
+```
 AutonomousAI/
 │
 ├── images/              # .png files for roads, cars, crosswalks, lights, etc.
@@ -86,11 +87,13 @@ AutonomousAI/
 ├── requirements.txt
 ├── .gitignore
 └── README.md
+```
 
 ---
 
 ## 🧩 Data Flow
 
+```
 main.py
 ├── map.py          → defines environment
 ├── car.py          → defines car behavior
@@ -98,6 +101,7 @@ main.py
 ├── pedestrian.py   → pedestrian control
 ├── algorithm.py    → pathfinding and route calculation
 └── interface.py    → buttons, info, and rendering
+```
 
 Each file works independently but communicates through shared objects created in `main.py`.  
 This will keep the code modular and avoid dependency conflicts.
@@ -134,3 +138,4 @@ This will keep the code modular and avoid dependency conflicts.
   * What data they output,
   * How `main.py` interacts with them.
 * Always test integration through `main.py` before handing off to the next team.
+
