@@ -148,5 +148,3 @@ This will keep the code modular and avoid dependency conflicts.
   - How `main.py` interacts with them.
 
 - Always test integration through `main.py` before handing off to the next team.
-
-# Autonomous-Vehicle-World-Grid

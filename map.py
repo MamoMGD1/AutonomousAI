@@ -1,12 +1,11 @@
 import pygame
 import sys
-import random
 
 # Initialize Pygame
 pygame.init()
 
 # --- NEW: Grid-based Constants ---
-CELL_SIZE = 20  # <-- "make small"
+CELL_SIZE = 17  # <-- "make small"
 GRID_WIDTH = 56  # 1120 / 20 <-- "world become wider"
 GRID_HEIGHT = 36 # 720 / 20  <-- "world become wider"
 
@@ -52,14 +51,14 @@ class Road:
         # --- NEW: Smart lane divider drawing ---
         # This logic creates ONE line between two lanes, not two centered lines.
         
-        if self.orientation == 'horizontal':
-            center_y = pixel_y + CELL_SIZE // 2
+        if self.orientation == 'horizontal' and self.direction == 'W':
+            center_y = pixel_y + CELL_SIZE - 0.1
             for i in range(pixel_x, pixel_x + CELL_SIZE, 10): # Dotted line
-                pygame.draw.line(screen, YELLOW, (i, center_y), (i + 5, center_y), 1)
-        else:  # vertical
-            center_x = pixel_x + CELL_SIZE // 2
+                pygame.draw.line(screen, YELLOW, (i, center_y), (i + 5, center_y), 4)
+        elif self.orientation == 'vertical' and self.direction == 'S':  # vertical
+            center_x = pixel_x + CELL_SIZE - 0.1
             for i in range(pixel_y, pixel_y + CELL_SIZE, 10): # Dotted line
-                pygame.draw.line(screen, YELLOW, (center_x, i), (center_x, i + 5), 1)
+                pygame.draw.line(screen, YELLOW, (center_x, i), (center_x, i + 5), 4)
         
         # 'northbound' and 'eastbound' tiles don't draw lines;
         # their 'southbound'/'westbound' neighbor already did.
@@ -450,7 +449,7 @@ def main():
                         
                         # --- NEW: Check for Road direction ---
                         elif isinstance(tile, Road):
-                            direction = tile.direction if tile.direction else 'Sub-Street'
+                            direction = tile.direction if tile.direction else 'Intersection'
                             print(f"Clicked Grid Coords: (row={grid_row}, col={grid_col}) - Tile Type: {type(tile)} - Direction: {direction}")
                         # --- End of new code ---
                         
