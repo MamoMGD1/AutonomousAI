@@ -1,64 +1,64 @@
 import pygame
 import sys
-import map  # Harita, karolar ve World sınıfı
-from car import Car   # Rastgele dolaşan Car sınıfı (Sadece AI)
-from agent import Agent # Oyuncu kontrollü Agent sınıfı
+import map  # Map, tiles, and World class
+from car import Car   # Randomly roaming Car class (AI only)
+from agent import Agent # Player-controlled Agent class
 
 def main():
     """
-    Ana simülasyon fonksiyonu.
-    Pygame'i başlatır, dünyayı kurar, araçları oluşturur ve ana döngüyü çalıştırır.
-    Oyuncu Kontrolü: Agent (agent.png)
-    Yapay Zeka: Car (car.png)
+    Main simulation function.
+    Initializes Pygame, sets up the world, creates vehicles, and runs the main loop.
+    Player Control: Agent (agent.png)
+    AI: Car (car.png)
     """
-    # Pygame'i başlat
+    # Initialize Pygame
     pygame.init()
 
-    # Pencere ve Ekran Ayarları (sabitleri map.py'den alır)
+    # Window and screen settings (constants from map.py)
     try:
         screen = pygame.display.set_mode((map.SCREEN_WIDTH, map.SCREEN_HEIGHT))
-        pygame.display.set_caption("Otonom Araç Simülasyonu")
+        pygame.display.set_caption("Autonomous Vehicle Simulation")
         clock = pygame.time.Clock()
     except AttributeError as e:
-        print(f"Hata: 'map.py' dosyasında gerekli ekran sabitleri (SCREEN_WIDTH, SCREEN_HEIGHT) bulunamadı.")
-        print(f"Detay: {e}")
+        print(f"Error: Required screen constants (SCREEN_WIDTH, SCREEN_HEIGHT) not found in 'map.py'.")
+        print(f"Detail: {e}")
         return
 
-    # Dünya (Harita) oluşturuluyor
+    # Create world (map)
     world = map.World(map.GRID_WIDTH, map.GRID_HEIGHT)
     
-    # Araçların listesi (Hem Car hem de Agent nesnelerini tutacak)
+    # List of vehicles (holds both Car and Agent objects)
     all_vehicles = []
-    player_vehicle = None # Oyuncu aracını ayrı bir değişkende tut
+    player_vehicle = None # Keep the player vehicle in a separate variable
 
-    # 1. Rastgele dolaşan (AI) arabaları oluştur (car.png)
-    num_cars = 20  # Simülasyondaki rastgele araba sayısı
+    # 1. Create randomly roaming (AI) cars (car.png)
+    num_cars = 20  # Number of random cars in the simulation
     for _ in range(num_cars):
         all_vehicles.append(Car(world))
         
-    # 2. Oyuncu Kontrollü Ajan'ı (agent.png) oluştur
+    # 2. Create player-controlled Agent (agent.png)
     try:
-        # Yolu ve dünyayı kullanarak Ajan'ı oluştur
+        # Create the agent using the world
         player_vehicle = Agent(world)
-        # Ajanı da diğer araçların listesine ekle
+        # Add the agent to the list of all vehicles
         all_vehicles.append(player_vehicle)
     except Exception as e:
-        print(f"Hata: Oyuncu Ajanı (Agent) oluşturulamadı. {e}")
-        # Hata olsa bile simülasyona (sadece Car'larla) devam et
+        print(f"Error: Player Agent could not be created. {e}")
+        # Continue simulation with only Cars if agent creation fails
         pass
 
-    # --- Ana Simülasyon Döngüsü ---
+    # --- Main Simulation Loop ---
     running = True
-    input_vector = pygame.math.Vector2(0, 0) # Oyuncu girdisini tutar
+    input_vector = pygame.math.Vector2(0, 0) # Stores player input
 
     while running:
-        # Olay (Event) Yönetimi
+        # Event Management
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             
-            # --- YENİ: Oyuncu Kontrolü Olayları ---
-            if player_vehicle: # Oyuncu aracı varsa
+            # --- NEW: Player Control Events ---
+            if player_vehicle: # If player vehicle exists
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_UP or event.key == pygame.K_w:
                         input_vector.y = -1
@@ -74,11 +74,11 @@ def main():
                         input_vector.y = 0
                     if event.key in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
                         input_vector.x = 0
-            # --- Oyuncu Kontrolü Sonu ---
+            # --- End of Player Control ---
 
-            # map.py'den alınan fare ile tıklama (debug) özelliği
+            # Mouse click (debug) feature from map.py
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Sol tık
+                if event.button == 1:  # Left click
                     pos = pygame.mouse.get_pos()
                     grid_col = pos[0] // map.CELL_SIZE
                     grid_row = pos[1] // map.CELL_SIZE
@@ -92,45 +92,45 @@ def main():
                         if isinstance(tile, map.TrafficLight):
                             state = tile.state
                         elif isinstance(tile, map.Road):
-                            state = tile.direction if tile.direction else 'Kavşak'
+                            state = tile.direction if tile.direction else 'Intersection'
                         
-                        print(f"[Debug] Tıklama: Pozisyon={coords}, Tip={tile_type}, Durum={state}")
+                        print(f"[Debug] Click: Position={coords}, Type={tile_type}, State={state}")
                     else:
-                        print(f"[Debug] Tıklama: Grid dışında.")
+                        print(f"[Debug] Click: Outside grid.")
         
-        # --- Güncelleme Aşaması ---
+        # --- Update Stage ---
         
-        # 1. Dünyayı güncelle (Trafik ışıklarının durumunu değiştirir)
+        # 1. Update the world (changes traffic light states)
         world.update()
         
-        # 2. Oyuncu aracının girdisini işle
+        # 2. Process player vehicle input
         if player_vehicle:
             player_vehicle.handle_input(input_vector)
 
-        # 3. Tüm araçları (Car ve Agent) güncelle
-        # Liste olarak 'all_vehicles' gönderilir, böylece araçlar birbirini görebilir.
+        # 3. Update all vehicles (Car and Agent)
+        # Send the list 'all_vehicles' so that vehicles can see each other
         for vehicle in all_vehicles:
             vehicle.update(all_vehicles)
             
-        # --- Çizim Aşaması ---
+        # --- Drawing Stage ---
         
-        # 1. Ekranı temizle
-        screen.fill(map.GREEN) # Arka planı çim rengi yap
+        # 1. Clear the screen
+        screen.fill(map.GREEN) # Set background to grass color
         
-        # 2. Haritayı (yollar, binalar, ışıklar) çiz
+        # 2. Draw the map (roads, buildings, traffic lights)
         world.draw(screen)
         
-        # 3. Tüm araçları (Car ve Agent) haritanın üzerine çiz
+        # 3. Draw all vehicles (Car and Agent) on top of the map
         for vehicle in all_vehicles:
             vehicle.draw(screen)
             
-        # 4. Ekranı yenile
+        # 4. Refresh the screen
         pygame.display.flip()
         
-        # FPS'i sabitle
+        # Cap FPS
         clock.tick(map.FPS)
     
-    # Döngü bittiğinde Pygame'i kapat
+    # Quit Pygame when loop ends
     pygame.quit()
     sys.exit()
 
