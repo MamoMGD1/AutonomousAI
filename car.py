@@ -1,8 +1,6 @@
 import pygame
 import random
-import math
 import map  # Access to map module (map.py)
-# Removed the incorrect line 'from car import Car'.
 
 class Car:
     # Stable monotonically increasing id to break head-on ties
@@ -14,14 +12,15 @@ class Car:
         This class is only for AI-controlled vehicles.
         """
         self.world = world
-        self.always_drive = always_drive  # <-- Added always_drive flag
+        self.always_drive = always_drive
+        self.needs_reroute = False
 
         # Assign stable car id
         self.car_id = Car.next_id
         Car.next_id += 1
 
         # Find the spawn point and set related grid/pixel coordinates
-        self.grid_x, self.grid_y = self.find_spawn_point()
+        self.grid_y, self.grid_x = self.find_spawn_point()
         self.pixel_x = self.grid_x * map.CELL_SIZE
         self.pixel_y = self.grid_y * map.CELL_SIZE
 
@@ -31,12 +30,12 @@ class Car:
             self.image_orig = pygame.image.load("images/car.png").convert_alpha()
         except pygame.error:
             # If not found, use a red square as default
-            print("Warning: 'images/car.png' not found. Using a red square as default.")
+            print("Warning: 'images/car.png' not found. Using a blue square as default.")
             self.image_orig = pygame.Surface((map.CELL_SIZE, map.CELL_SIZE), pygame.SRCALPHA)
-            pygame.draw.rect(self.image_orig, (255, 0, 0, 200), (0, 0, map.CELL_SIZE, map.CELL_SIZE))
+            pygame.draw.rect(self.image_orig, (0, 0, 255, 200), (0, 0, map.CELL_SIZE, map.CELL_SIZE))
 
         # As large as possible -> Close to cell size (with a small margin)
-        scale_factor = 0.9
+        scale_factor = 1.5
         self.image_orig = pygame.transform.scale(self.image_orig, (int(map.CELL_SIZE * scale_factor), int(map.CELL_SIZE * scale_factor)))
         self.image = self.image_orig
         self.rect = self.image.get_rect(center=(self.pixel_x + map.CELL_SIZE // 2, self.pixel_y + map.CELL_SIZE // 2))
@@ -63,6 +62,11 @@ class Car:
         else:
             self.respawn() # Spawned at invalid location, respawn
 
+        # Add stuck detection
+        self.stuck_timer = 0
+        self.max_stuck_time = 6 * map.FPS  # 6 seconds at 60 FPS
+        self.last_position = (0, 0)
+
     def find_spawn_point(self):
         """Find a random valid road cell on the map to spawn the car."""
         road_tiles = []
@@ -71,7 +75,7 @@ class Car:
                 tile = self.world.grid[r][c]
                 # Only start on roads that have a lane direction (not intersections)
                 if isinstance(tile, map.Road) and tile.direction is not None:
-                    road_tiles.append((c, r)) # (x, y) -> (col, row)
+                    road_tiles.append((r, c)) # (y, x) -> (col, row)
         
         if road_tiles:
             return random.choice(road_tiles)
@@ -120,125 +124,294 @@ class Car:
 
     def look_ahead(self, other_cars, scan_distance=5):
         """
-        Scans ahead and reports obstacles:
-        - red_light: a crosswalk ahead with a red traffic light
-        - car_ahead: another car occupying a cell in our path
+        Returns: (obstacle_type, distance) or None
         """
         if getattr(self, "always_drive", False):
             return None
         if self.direction_vector.length() == 0:
             return None
 
-        # Scan the cells ahead for red lights; only the immediate next cell blocks for cars
         for i in range(1, scan_distance + 1):
             check_x = self.grid_x + int(self.direction_vector.x * i)
             check_y = self.grid_y + int(self.direction_vector.y * i)
 
-            # If out of bounds, just stop scanning further (do not flag obstacle)
             if not (0 <= check_x < map.GRID_WIDTH and 0 <= check_y < map.GRID_HEIGHT):
                 break
 
-            # 1) Check for other cars ONLY in the immediate next cell to avoid far-look deadlocks
-            if i == 1 and other_cars:
-                for car in other_cars:
-                    if car is not self and car.grid_x == check_x and car.grid_y == check_y:
-                        # If we're head-on, yield based on stable id (lower id goes first)
-                        if self.direction_vector == -car.direction_vector:
-                            if self.car_id > car.car_id:
-                                return 'car_ahead'  # we yield
-                            else:
-                                continue  # we have priority, don't block
-                        # Otherwise (same direction), block
-                        return 'car_ahead'
-
             tile = self.world.grid[check_y][check_x]
 
-            # 2) Consider traffic lights at crosswalks
+            # CHECK CROSSWALK/PEDESTRIANS FIRST (highest priority)
             if isinstance(tile, map.Crosswalk):
-                light = self.find_correct_light(check_x, check_y)
+                # Check for pedestrians (law-breakers or legal crossers)
+                if hasattr(self.world, "pedestrian_manager") and self.world.pedestrian_manager:
+                    for ped in self.world.pedestrian_manager.group:
+                        # Calculate pedestrian's grid position from pixel position
+                        ped_grid_x = int(ped.rect.centerx // map.CELL_SIZE)
+                        ped_grid_y = int(ped.rect.centery // map.CELL_SIZE)
+                        
+                        if ped_grid_x == check_x and ped_grid_y == check_y:
+                            return ('pedestrian', i)  # ← Stop for pedestrians!
+
+                # Then check traffic light
+                light = self.find_correct_light(check_y, check_x)
                 if light and light.state == 'red':
-                    return 'red_light'
+                    return ('red_light', i)
+
+            # CHECK CARS AFTER (lower priority than pedestrians)
+            if other_cars:
+                for car in other_cars:
+                    if car is not self and car.grid_x == check_x and car.grid_y == check_y:
+                        return ('car_ahead', i)
+        
         return None
 
-    def find_correct_light(self, cx, cy):
+    def find_correct_light(self, crow, ccol):
         """
-        Find the correct traffic light associated with the crosswalk at (cx, cy).
-        Searches to the sides perpendicular to the car's movement direction.
+        Find the traffic light to the RIGHT of the crosswalk (from car's perspective).
+        crow = row, ccol = col of the crosswalk
         """
-        light = None
-        # Perpendicular vectors to the direction (right/left)
-        # Perpendicular of (x, y) is (-y, x) or (y, -x)
-        perp_vec_1 = pygame.math.Vector2(self.direction_vector.y, -self.direction_vector.x)
-        perp_vec_2 = pygame.math.Vector2(-self.direction_vector.y, self.direction_vector.x)
-
-        # 1. Look to the right (e.g., 2 cells)
-        for i in range(1, 3):
-            lx, ly = cx + int(perp_vec_1.x * i), cy + int(perp_vec_1.y * i)
-            if 0 <= lx < map.GRID_WIDTH and 0 <= ly < map.GRID_HEIGHT:
-                tile = self.world.grid[ly][lx]
-                if isinstance(tile, map.TrafficLight):
-                    return tile # Found the light
-
-        # 2. Look to the left (e.g., 2 cells)
-        for i in range(1, 3):
-            lx, ly = cx + int(perp_vec_2.x * i), cy + int(perp_vec_2.y * i)
-            if 0 <= lx < map.GRID_WIDTH and 0 <= ly < map.GRID_HEIGHT:
-                tile = self.world.grid[ly][lx]
-                if isinstance(tile, map.TrafficLight):
-                    return tile # Found the light
+        # Determine which direction to look based on car's movement
+        if self.direction_vector.y == -1:  # Moving North
+            # Light should be to the right: col + 1
+            light_row, light_col = crow, ccol + 1
+        elif self.direction_vector.y == 1:  # Moving South
+            # Light should be to the right: col - 1
+            light_row, light_col = crow, ccol - 1
+        elif self.direction_vector.x == -1:  # Moving West
+            # Light should be to the right: row - 1
+            light_row, light_col = crow - 1, ccol
+        elif self.direction_vector.x == 1:  # Moving East
+            # Light should be to the right: row + 1
+            light_row, light_col = crow + 1, ccol
+        else:
+            return None
         
-        return None # No light found for this crosswalk
+        # Check if that position is valid and has a traffic light
+        if 0 <= light_row < map.GRID_HEIGHT and 0 <= light_col < map.GRID_WIDTH:
+            tile = self.world.grid[light_row][light_col]
+            if isinstance(tile, map.TrafficLight):
+                return tile
+        
+        return None
 
-    def update_state(self, obstacle):
-        """Update state based on seen obstacle (red lights or cars cause stopping)."""
+    def update_state(self, obstacle_info):
+        """Update state based on obstacle and its distance."""
         if getattr(self, "always_drive", False):
             self.state = 'driving'
             return
-        if self.state == 'driving':
-            if obstacle in ('red_light', 'car_ahead'):
-                self.state = 'stopping'
-        elif self.state == 'stopping':
-            if self.speed == 0:
-                self.state = 'stopped'
-            elif obstacle is None:
+        
+        if obstacle_info is None:
+            # No obstacle, drive normally
+            if self.state in ('stopping', 'stopped'):
                 self.state = 'driving'
-        elif self.state == 'stopped':
-            if obstacle is None:
-                self.state = 'driving'
+        else:
+            obstacle_type, distance = obstacle_info
+            
+            # If very close (1 cell away) and still moving, must stop
+            if distance == 1:
+                if self.state == 'driving':
+                    self.state = 'stopping'
+                elif self.state == 'stopping' and self.speed == 0:
+                    self.state = 'stopped'
+            else:
+                # Far away, start gradual braking
+                if self.state == 'driving':
+                    self.state = 'braking'  # New state for gradual slowdown
 
-    def update_speed(self):
-        """Update speed (accelerate/decelerate) based on current state."""
+    def update_speed(self, obstacle_info=None):
+        """Update speed based on state and distance to obstacle."""
         
         if self.state == 'driving':
-            # Accelerate towards the target speed (max_speed)
+            # Accelerate towards max speed
             self.speed = min(self.max_speed, self.speed + self.acceleration)
-        elif self.state == 'stopping' or self.state == 'stopped':
-            # Decelerate
+        
+        elif self.state == 'braking':
+            # NEW: Gradual braking based on distance
+            if obstacle_info:
+                obstacle_type, distance = obstacle_info
+                # Calculate target speed based on distance
+                # At distance 5: slow down to 80% speed
+                # At distance 3: slow down to 50% speed
+                # At distance 2: slow down to 30% speed
+                # At distance 1: stop
+                
+                if distance >= 4:
+                    target_speed = self.max_speed * 0.7
+                elif distance == 3:
+                    target_speed = self.max_speed * 0.5
+                elif distance == 2:
+                    target_speed = self.max_speed * 0.3
+                else:  # distance == 1
+                    target_speed = 0
+                    self.state = 'stopping'
+                
+                # Gradually adjust to target speed
+                if self.speed > target_speed:
+                    self.speed = max(target_speed, self.speed - self.deceleration)
+                else:
+                    self.speed = min(target_speed, self.speed + self.acceleration)
+            else:
+                # No obstacle info, resume driving
+                self.state = 'driving'
+        
+        elif self.state == 'stopping':
+            # Hard brake to full stop
             self.speed = max(0, self.speed - self.deceleration)
+            if self.speed == 0:
+                self.state = 'stopped'
+        
+        elif self.state == 'stopped':
+            self.speed = 0
 
     def update_position(self, other_cars=None):
         """Update pixel position according to speed and direction."""
+        
+        # Track if we're stuck (not moving)
+        current_pos = (int(self.pixel_x), int(self.pixel_y))
+        if current_pos == self.last_position:
+            self.stuck_timer += 1
+            
+            # After 7 seconds (420 frames at 60 FPS), force movement
+            if self.stuck_timer > 420:
+                # Force the car to find a new direction NOW
+                self.force_find_new_direction(other_cars)
+                self.stuck_timer = 0
+                return
+        else:
+            self.stuck_timer = 0  # Reset if moving
+            self.last_position = current_pos
+        
         if self.speed == 0:
             return
 
-        # Update pixel position
-        self.pixel_x += self.direction_vector.x * self.speed
-        self.pixel_y += self.direction_vector.y * self.speed
+        # Calculate next position
+        next_pixel_x = self.pixel_x + self.direction_vector.x * self.speed
+        next_pixel_y = self.pixel_y + self.direction_vector.y * self.speed
         
-        # Update car's center for drawing
+        # Create a smaller collision box
+        collision_shrink_w = 1.55
+        collision_shrink_h = 0.55
+        if abs(self.direction_vector.x) > 0:  # horizontal (east/west)
+            smaller_width = int(map.CELL_SIZE * collision_shrink_w)
+            smaller_height = int(map.CELL_SIZE * collision_shrink_h)
+        else:  # vertical (north/south)
+            smaller_width = int(map.CELL_SIZE * collision_shrink_h)
+            smaller_height = int(map.CELL_SIZE * collision_shrink_w)
+        
+        next_collision_rect = pygame.Rect(0, 0, smaller_width, smaller_height)
+        next_collision_rect.center = (next_pixel_x + map.CELL_SIZE // 2, next_pixel_y + map.CELL_SIZE // 2)
+
+        # Check pixel-level collision with other cars
+        collision_detected = False
+        if other_cars:
+            for car in other_cars:
+                if car is self:
+                    continue
+                
+                # Create smaller collision box for the other car
+                other_collision_rect = pygame.Rect(0, 0, smaller_width, smaller_height)
+                other_collision_rect.center = car.rect.center
+                
+                # If collision detected
+                if next_collision_rect.colliderect(other_collision_rect):
+                    # Calculate current distance and next distance
+                    current_distance_sq = (self.pixel_x - car.pixel_x)**2 + (self.pixel_y - car.pixel_y)**2
+                    next_distance_sq = (next_pixel_x - car.pixel_x)**2 + (next_pixel_y - car.pixel_y)**2
+                    
+                    # If moving AWAY, allow escape
+                    if next_distance_sq > current_distance_sq:
+                        continue
+                    
+                    collision_detected = True
+                    break
+        
+        if collision_detected:
+            self.speed = max(0, self.speed - self.deceleration * 3)
+            self.state = 'stopped' if self.speed == 0 else 'stopping'
+            return
+
+        # No collision - apply movement
+        self.pixel_x = next_pixel_x
+        self.pixel_y = next_pixel_y
+        
         self.rect.center = (self.pixel_x + map.CELL_SIZE // 2, self.pixel_y + map.CELL_SIZE // 2)
 
-        # Calculate which grid cell we are in based on pixel position
         new_grid_x = int(self.pixel_x / map.CELL_SIZE)
         new_grid_y = int(self.pixel_y / map.CELL_SIZE)
 
-        # If we entered a new grid cell
         if new_grid_x != self.grid_x or new_grid_y != self.grid_y:
             self.grid_x = new_grid_x
             self.grid_y = new_grid_y
-            # AI runs the new tile logic
-            self.on_new_tile_ai(other_cars) 
+            self.on_new_tile_ai(other_cars)
 
+    def force_find_new_direction(self, other_cars):
+        """Force the car to find and move in an open direction when stuck."""
+        
+        # Check all 4 directions for an open path
+        moves = [
+            ('N', (0, -1)),
+            ('S', (0, 1)),
+            ('E', (1, 0)),
+            ('W', (-1, 0))
+        ]
+        
+        open_directions = []
+        
+        for move_dir_str, (dx, dy) in moves:
+            nx = self.grid_x + dx
+            ny = self.grid_y + dy
+            
+            # Check if within bounds
+            if not (0 <= nx < map.GRID_WIDTH and 0 <= ny < map.GRID_HEIGHT):
+                continue
+            
+            tile = self.world.grid[ny][nx]
+            
+            # Check if it's a valid road/crosswalk
+            if not isinstance(tile, (map.Road, map.Crosswalk)):
+                continue
+            
+            # Check if blocked by another car
+            is_blocked = False
+            if other_cars:
+                for car in other_cars:
+                    if car is not self and car.grid_x == nx and car.grid_y == ny:
+                        is_blocked = True
+                        break
+            
+            if not is_blocked:
+                open_directions.append(move_dir_str)
+        
+        # Choose a direction
+        if open_directions:
+            # Prefer any direction that's not a U-turn
+            current_opposite = None
+            if self.direction_vector.x == 1: current_opposite = 'W'
+            elif self.direction_vector.x == -1: current_opposite = 'E'
+            elif self.direction_vector.y == 1: current_opposite = 'N'
+            elif self.direction_vector.y == -1: current_opposite = 'S'
+            
+            # Remove U-turn if other options exist
+            if current_opposite in open_directions and len(open_directions) > 1:
+                open_directions.remove(current_opposite)
+            
+            chosen_dir = random.choice(open_directions)
+            self.follow_road_direction(chosen_dir)
+            
+            # Force the car to start moving
+            self.state = 'driving'
+            self.speed = self.max_speed * 0.5  # Give it decent speed
+            
+        else:
+            # ALL directions blocked - make a U-turn anyway
+            if self.direction_vector.x == 1: self.follow_road_direction('W')
+            elif self.direction_vector.x == -1: self.follow_road_direction('E')
+            elif self.direction_vector.y == 1: self.follow_road_direction('N')
+            elif self.direction_vector.y == -1: self.follow_road_direction('S')
+            
+            self.state = 'driving'
+            self.speed = self.max_speed * 0.5
+            
     def on_new_tile_ai(self, other_cars):
         """Called when the car enters a new grid cell (handles turns and lane following)."""
         # If we went out of map bounds
@@ -269,7 +442,6 @@ class Car:
         current_dir_vec = self.direction_vector
         
         # Check all 4 possible directions
-        # (move_dir, (dx, dy))
         moves = {'N': (0, -1), 'S': (0, 1), 'E': (1, 0), 'W': (-1, 0)}
 
         for move_dir_str, (dx, dy) in moves.items():
@@ -282,8 +454,7 @@ class Car:
                     # Prevent U-turn (going back to the direction you came from)
                     if pygame.math.Vector2(dx, dy) != -current_dir_vec:
                         
-                        # --- Check if this path is open (AI gridlock fix) ---
-                        # Is there a car in this direction (1 cell)?
+                        # Check if this path is open
                         is_blocked = False
                         if other_cars:
                             for car in other_cars:
@@ -293,32 +464,51 @@ class Car:
                         
                         if not is_blocked:
                             possible_dirs.append(move_dir_str)
-                        # --- End check ---
 
         if possible_dirs:
-            # Prefer to go straight (if possible)
-            straight_move_str = None
-            if current_dir_vec.x == 1: straight_move_str = 'E'
-            elif current_dir_vec.x == -1: straight_move_str = 'W'
-            elif current_dir_vec.y == 1: straight_move_str = 'S'
-            elif current_dir_vec.y == -1: straight_move_str = 'N'
-
-            # 70% chance to go straight (if possible)
-            if straight_move_str in possible_dirs and random.random() < 0.7: 
-                chosen_dir = straight_move_str
+            # If we need to reroute (collision happened), AVOID going straight
+            if getattr(self, 'needs_reroute', False):
+                straight_move_str = None
+                if current_dir_vec.x == 1: straight_move_str = 'E'
+                elif current_dir_vec.x == -1: straight_move_str = 'W'
+                elif current_dir_vec.y == 1: straight_move_str = 'S'
+                elif current_dir_vec.y == -1: straight_move_str = 'N'
+                
+                # Remove straight direction from options (force a turn)
+                if straight_move_str and straight_move_str in possible_dirs:
+                    possible_dirs.remove(straight_move_str)
+                
+                # If still have options after removing straight, pick one
+                if possible_dirs:
+                    chosen_dir = random.choice(possible_dirs)
+                else:
+                    # No choice but to go straight or turn around
+                    chosen_dir = straight_move_str if straight_move_str else random.choice(['N', 'S', 'E', 'W'])
+                
+                self.needs_reroute = False  # Reset flag
             else:
-                # If cannot go straight or decided to turn randomly
-                chosen_dir = random.choice(possible_dirs)
+                # Normal intersection behavior (prefer straight)
+                straight_move_str = None
+                if current_dir_vec.x == 1: straight_move_str = 'E'
+                elif current_dir_vec.x == -1: straight_move_str = 'W'
+                elif current_dir_vec.y == 1: straight_move_str = 'S'
+                elif current_dir_vec.y == -1: straight_move_str = 'N'
+
+                # 70% chance to go straight (if possible)
+                if straight_move_str in possible_dirs and random.random() < 0.7: 
+                    chosen_dir = straight_move_str
+                else:
+                    chosen_dir = random.choice(possible_dirs)
             
             self.follow_road_direction(chosen_dir)
         else:
-            # Stuck (e.g., dead end), make a U-turn
+            # Stuck, make a U-turn
             if -current_dir_vec != pygame.math.Vector2(0, 0):
                 self.direction_vector = -current_dir_vec
-                # Angle correction
                 self.angle = (self.angle + 180) % 360
+                self.needs_reroute = False  # Reset flag
             else:
-                self.respawn() # Completely stuck
+                self.respawn()
 
     def rotate_image(self):
         """
@@ -332,7 +522,7 @@ class Car:
 
     def respawn(self):
         """Teleport the car to a random valid starting road cell on the map."""
-        self.grid_x, self.grid_y = self.find_spawn_point()
+        self.grid_y, self.grid_x = self.find_spawn_point()
         self.pixel_x = self.grid_x * map.CELL_SIZE
         self.pixel_y = self.grid_y * map.CELL_SIZE
         self.speed = 0
@@ -345,20 +535,19 @@ class Car:
             print("Error: Respawn failed, no valid spawn point found.")
 
     # --- MAIN UPDATE ---
-
     def update(self, other_cars):
         """Main per-frame AI update for the car."""
         
-        # 1. Look ahead (default AI scan is 5 cells)
-        obstacle = self.look_ahead(other_cars, scan_distance=5)
+        # 1. Look ahead (returns (type, distance) or None)
+        obstacle_info = self.look_ahead(other_cars, scan_distance=5)
         
-        # 2. Update state (stop/go)
-        self.update_state(obstacle)
+        # 2. Update state based on obstacle and distance
+        self.update_state(obstacle_info)
         
-        # 3. Update speed (accelerate/decelerate)
-        self.update_speed()
+        # 3. Update speed based on state and distance
+        self.update_speed(obstacle_info)
         
-        # 4. Update position (triggers on_new_tile_ai)
+        # 4. Update position
         self.update_position(other_cars)
         
         # 5. Rotate image

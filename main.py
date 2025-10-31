@@ -1,138 +1,157 @@
 import pygame
 import sys
+import random
 import map  # Map, tiles, and World class
-from car import Car   # Randomly roaming Car class (AI only)
-from agent import Agent # Player-controlled Agent class
+from car import Car   # Randomly roaming Car class
+from agent import Agent  # Automated Agent class (path-following)
+from pedestrian import PedestrianManager
 
 def main():
     """
     Main simulation function.
-    Initializes Pygame, sets up the world, creates vehicles, and runs the main loop.
-    Player Control: Agent (agent.png)
-    AI: Car (car.png)
+    Initializes Pygame, sets up the world, creates vehicles & pedestrians, and runs the main loop.
     """
-    # Initialize Pygame
+    # --- Initialization ---
     pygame.init()
 
-    # Window and screen settings (constants from map.py)
+    # Window setup
     try:
         screen = pygame.display.set_mode((map.SCREEN_WIDTH, map.SCREEN_HEIGHT))
-        pygame.display.set_caption("Autonomous Vehicle Simulation")
+        pygame.display.set_caption("Autonomous Vehicle Simulation + Pedestrians")
         clock = pygame.time.Clock()
     except AttributeError as e:
-        print(f"Error: Required screen constants (SCREEN_WIDTH, SCREEN_HEIGHT) not found in 'map.py'.")
+        print("Error: Missing SCREEN_WIDTH/HEIGHT constants in map.py.")
         print(f"Detail: {e}")
         return
 
-    # Create world (map)
+    # --- World Setup ---
     world = map.World(map.GRID_WIDTH, map.GRID_HEIGHT)
-    
-    # List of vehicles (holds both Car and Agent objects)
-    all_vehicles = []
-    player_vehicle = None # Keep the player vehicle in a separate variable
+    random.seed(None)
 
-    # 1. Create randomly roaming (AI) cars (car.png)
-    num_cars = 20  # Number of random cars in the simulation
+    # --- Vehicles ---
+    all_vehicles = []
+    player_agent = None
+
+    # 1. Create AI cars
+    num_cars = 10
     for _ in range(num_cars):
         all_vehicles.append(Car(world))
-        
-    # 2. Create player-controlled Agent (agent.png)
-    try:
-        # Create the agent using the world
-        player_vehicle = Agent(world)
-        # Add the agent to the list of all vehicles
-        all_vehicles.append(player_vehicle)
-    except Exception as e:
-        print(f"Error: Player Agent could not be created. {e}")
-        # Continue simulation with only Cars if agent creation fails
-        pass
 
-    # --- Main Simulation Loop ---
+    # 2. Create one Agent (automated)
+    try:
+        player_agent = Agent(world)
+        all_vehicles.append(player_agent)
+        print("[Info] Agent created successfully.")
+    except Exception as e:
+        print(f"[Warning] Could not create Agent: {e}")
+        player_agent = None
+
+    # --- Pedestrian Setup ---
+    try:
+        ped_sprite = pygame.image.load("images/man.png").convert_alpha()
+        pedestrians = PedestrianManager(world, ped_sprite)
+        world.pedestrian_manager = pedestrians
+    except Exception as e:
+        print(f"Warning: Pedestrian system could not be initialized. {e}")
+        pedestrians = None
+
+    # --- Click-based Agent control ---
+    selected_spawn = None  # grid (row, col)
+    destination = None     # grid (row, col)
+
+    # --- Main Loop ---
     running = True
-    input_vector = pygame.math.Vector2(0, 0) # Stores player input
 
     while running:
-        # Event Management
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            
-            # --- NEW: Player Control Events ---
-            if player_vehicle: # If player vehicle exists
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_UP or event.key == pygame.K_w:
-                        input_vector.y = -1
-                    elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
-                        input_vector.y = 1
-                    elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
-                        input_vector.x = -1
-                    elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
-                        input_vector.x = 1
-                
-                if event.type == pygame.KEYUP:
-                    if event.key in (pygame.K_UP, pygame.K_w, pygame.K_DOWN, pygame.K_s):
-                        input_vector.y = 0
-                    if event.key in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
-                        input_vector.x = 0
-            # --- End of Player Control ---
 
-            # Mouse click (debug) feature from map.py
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left click
-                    pos = pygame.mouse.get_pos()
-                    grid_col = pos[0] // map.CELL_SIZE
-                    grid_row = pos[1] // map.CELL_SIZE
-                    
-                    if 0 <= grid_col < map.GRID_WIDTH and 0 <= grid_row < map.GRID_HEIGHT:
-                        tile = world.grid[grid_row][grid_col]
-                        coords = (grid_row, grid_col)
-                        tile_type = type(tile)
-                        state = None
+            # LEFT CLICK = debug info
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                pos = pygame.mouse.get_pos()
+                grid_col = pos[0] // map.CELL_SIZE
+                grid_row = pos[1] // map.CELL_SIZE
+                if 0 <= grid_col < map.GRID_WIDTH and 0 <= grid_row < map.GRID_HEIGHT:
+                    tile = world.grid[grid_row][grid_col]
+                    tile_type = type(tile).__name__
+                    state = getattr(tile, "state", None)
+                    if isinstance(tile, map.Road):
+                        state = tile.direction if tile.direction else "Intersection"
+                    print(f"[Debug] Click at {grid_row, grid_col} | Type={tile_type} | State={state}")
+                else:
+                    print("[Debug] Click outside grid.")
 
-                        if isinstance(tile, map.TrafficLight):
-                            state = tile.state
-                        elif isinstance(tile, map.Road):
-                            state = tile.direction if tile.direction else 'Intersection'
-                        
-                        print(f"[Debug] Click: Position={coords}, Type={tile_type}, State={state}")
-                    else:
-                        print(f"[Debug] Click: Outside grid.")
-        
-        # --- Update Stage ---
-        
-        # 1. Update the world (changes traffic light states)
+            # RIGHT CLICK = spawn or path assignment
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                pos = pygame.mouse.get_pos()
+                grid_col = pos[0] // map.CELL_SIZE
+                grid_row = pos[1] // map.CELL_SIZE
+
+                if not (0 <= grid_col < map.GRID_WIDTH and 0 <= grid_row < map.GRID_HEIGHT):
+                    print("[Click] Outside grid.")
+                    continue
+
+                # First right-click = choose spawn location
+                if selected_spawn is None:
+                    selected_spawn = (grid_row, grid_col)
+                    print(f"[Agent] Spawn selected at {selected_spawn}")
+
+                    # Place the agent there
+                    if player_agent:
+                        try:
+                            player_agent.set_position(grid_row, grid_col)
+                            player_agent.stop()
+                            print("[Agent] Moved to selected start position.")
+                        except Exception as e:
+                            print(f"[Agent] Invalid spawn: {e}")
+                            selected_spawn = None
+
+                # Second right-click = choose destination and move
+                elif destination is None:
+                    destination = (grid_row, grid_col)
+                    print(f"[Agent] Destination selected at {destination}")
+
+                    if player_agent and selected_spawn:
+                        # Compute A* path from spawn → destination
+                        try:
+                            path = [(5,1), (5,2), (5,3), (5,4), (5,5), (5,6), (6, 6), (7, 6)]
+                            if path:
+                                player_agent.move(path)
+                                print(f"[Agent] Path found: {len(path)} steps.")
+                            else:
+                                print("[Agent] No valid path found.")
+                        except Exception as e:
+                            print(f"[Agent] Pathfinding error: {e}")
+
+                    # Reset selections for next interaction
+                    selected_spawn = None
+                    destination = None
+
+        # --- Updates ---
+        dt = clock.tick(map.FPS) / 1000.0
         world.update()
-        
-        # 2. Process player vehicle input
-        if player_vehicle:
-            player_vehicle.handle_input(input_vector)
 
-        # 3. Update all vehicles (Car and Agent)
-        # Send the list 'all_vehicles' so that vehicles can see each other
         for vehicle in all_vehicles:
             vehicle.update(all_vehicles)
-            
-        # --- Drawing Stage ---
-        
-        # 1. Clear the screen
-        screen.fill(map.GREEN) # Set background to grass color
-        
-        # 2. Draw the map (roads, buildings, traffic lights)
+
+        if pedestrians:
+            pedestrians.update(dt)
+
+        # --- Draw ---
+        screen.fill(map.GREEN)
         world.draw(screen)
-        
-        # 3. Draw all vehicles (Car and Agent) on top of the map
         for vehicle in all_vehicles:
             vehicle.draw(screen)
-            
-        # 4. Refresh the screen
+        if pedestrians:
+            pedestrians.draw(screen)
+
         pygame.display.flip()
-        
-        # Cap FPS
-        clock.tick(map.FPS)
-    
-    # Quit Pygame when loop ends
+
+    # --- Cleanup ---
     pygame.quit()
     sys.exit()
+
 
 if __name__ == "__main__":
     main()

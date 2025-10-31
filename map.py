@@ -1,7 +1,7 @@
 import pygame
 import sys
 import random
-#random.seed(42)
+random.seed(42)
 
 # Initialize Pygame
 pygame.init()
