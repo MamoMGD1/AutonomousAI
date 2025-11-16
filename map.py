@@ -318,7 +318,7 @@ class World:
             (4, 6, 'green'),    # Upper-left major
             (4, 32, 'yellow'),  # Upper-left major
             (12, 6, 'red'),     # Mid-left
-            (12, 18, 'yellow'),     # Mid-left
+            #(12, 18, 'green'),     # Mid-left
             (12, 44, 'yellow'),     # Mid-left
             (20, 18, 'green'),  # Center-left important
             (20, 32, 'red'),    # Center major

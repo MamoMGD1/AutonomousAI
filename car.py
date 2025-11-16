@@ -1,6 +1,6 @@
 import pygame
 import random
-import map  # Access to map module (map.py)
+import map
 
 class Car:
     # Stable monotonically increasing id to break head-on ties
@@ -29,7 +29,7 @@ class Car:
             # Try to load images/car.png
             self.image_orig = pygame.image.load("images/car.png").convert_alpha()
         except pygame.error:
-            # If not found, use a red square as default
+            # If not found, use a blue square as default
             print("Warning: 'images/car.png' not found. Using a blue square as default.")
             self.image_orig = pygame.Surface((map.CELL_SIZE, map.CELL_SIZE), pygame.SRCALPHA)
             pygame.draw.rect(self.image_orig, (0, 0, 255, 200), (0, 0, map.CELL_SIZE, map.CELL_SIZE))
@@ -64,7 +64,7 @@ class Car:
 
         # Add stuck detection
         self.stuck_timer = 0
-        self.max_stuck_time = 6 * map.FPS  # 6 seconds at 60 FPS
+        self.max_stuck_time = 3 * map.FPS  # 3 seconds at 60 FPS
         self.last_position = (0, 0)
 
     def find_spawn_point(self):
@@ -163,6 +163,10 @@ class Car:
                     if car is not self and car.grid_x == check_x and car.grid_y == check_y:
                         return ('car_ahead', i)
         
+            # CHECK OBSTACLES (grass, buildings)
+            if isinstance(tile, (map.Grass, map.TrafficLight)):
+                return ('obstacle', i)
+            
         return None
 
     def find_correct_light(self, crow, ccol):
@@ -271,8 +275,8 @@ class Car:
         if current_pos == self.last_position:
             self.stuck_timer += 1
             
-            # After 7 seconds (420 frames at 60 FPS), force movement
-            if self.stuck_timer > 420:
+            # After 3 seconds (180 frames at 60 FPS), force movement
+            if self.stuck_timer > self.max_stuck_time:
                 # Force the car to find a new direction NOW
                 self.force_find_new_direction(other_cars)
                 self.stuck_timer = 0
