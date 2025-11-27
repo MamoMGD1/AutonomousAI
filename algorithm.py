@@ -135,17 +135,23 @@ class SearchVisualizer:
         self._recolor_after_search(final_path)
         if auto_accept:
             # commit immediately without prompting
-            self.overlay.fill((0,0,0,0))
-            if final_path:
-                for i in range(len(final_path)-1):
-                    a_px = self.pixel_center(final_path[i])
-                    b_px = self.pixel_center(final_path[i+1])
-                    pygame.draw.line(self.overlay, GREEN, a_px, b_px, max(3, self.cell_size // 4))
-            self.screen.blit(self.overlay, (0,0))
-            pygame.display.flip()
+            
+# TODO [KALDIRILDI]: Eski mantık, kaplamayı hemen temizledi.
+# Kullanıcı onayını beklerken main.py'nin gri çizgileri gösterebilmesi için bunu yorum satırına aldık.
+            # self.overlay.fill((0,0,0,0))
+            # if final_path:
+            #     for i in range(len(final_path)-1):
+            #         a_px = self.pixel_center(final_path[i])
+            #         b_px = self.pixel_center(final_path[i+1])
+            #         pygame.draw.line(self.overlay, GREEN, a_px, b_px, max(3, self.cell_size // 4))
+            # self.screen.blit(self.overlay, (0,0))
+            # pygame.display.flip()
+
+          # TODO [EKLENDİ]: Hemen True değerini döndür ancak kaplamayı çizilmiş halde tut (gri + yeşil).
             return True
+
         try:
-            print("Accept this path? (y/n) and Enter:")
+            print("Accept this path? (y/n) and Enter:") # ihtiyacimiz yok
             choice = input().strip().lower()
         except Exception:
             choice = 'y'
@@ -276,7 +282,7 @@ class BFSVisualizer(SearchVisualizer):
                         break
                     node = parent[node]
                 path.reverse()
-                committed = self._confirm_and_commit(path, auto_accept=False)
+                committed = self._confirm_and_commit(path, auto_accept=auto_accept)
                 return path if committed else []
 
             for nb in self.neighbors(current):
