@@ -315,8 +315,16 @@ def main():
             clock.tick(map.FPS) 
 
         # UI'daki ajan konumunu canlı güncel tut
-        if player_agent.is_active:
-             ui.state.agent_pos = (player_agent.grid_y, player_agent.grid_x)
+        if player_agent:
+            # always update agent position in the UI (even if stopped)
+            ui.state.agent_pos = (player_agent.grid_y, player_agent.grid_x)
+
+            # if agent just arrived at its destination, update status so panel isn't stuck on "Moving..."
+            if not player_agent.is_active and player_agent.destination:
+                if (player_agent.grid_y, player_agent.grid_x) == player_agent.destination:
+                    ui.state.status_message = "Target Reached"
+                    # clear destination to avoid re-triggering
+                    player_agent.destination = None
 
         # --- Çizim Aşaması ---
         # Harita alanını (sol taraf) kırp ve temizle

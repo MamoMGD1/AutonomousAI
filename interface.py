@@ -207,8 +207,8 @@ class Interface:
         y += gap
 
         # 5. Araçlar
-        self.static_buttons.append(Button(bx, y, half_w, bh, "Add Wall", "MODE_ADD"))
-        self.static_buttons.append(Button(bx + half_w + 10, y, half_w, bh, "Del Wall", "MODE_DEL"))
+        self.static_buttons.append(Button(bx, y, half_w, bh, "Add Obstacle", "MODE_ADD"))
+        self.static_buttons.append(Button(bx + half_w + 10, y, half_w, bh, "Del Obstacle", "MODE_DEL"))
         
         self.last_button_y = y + bh
 
@@ -242,10 +242,10 @@ class Interface:
             self.state.cycle_algorithm()
         elif code == "MODE_ADD":
             self.state.mode = 'ADD_OBSTACLE'
-            self.state.status_message = "Mode: Add Walls"
+            self.state.status_message = "Mode: Add Obstacles"
         elif code == "MODE_DEL":
             self.state.mode = 'REMOVE_OBSTACLE'
-            self.state.status_message = "Mode: Remove Walls"
+            self.state.status_message = "Mode: Remove Obstacles"
         return code
 
     def draw(self, screen, agent=None):
@@ -344,7 +344,7 @@ class Interface:
             pygame.draw.line(screen, ACCENT_CYAN, (cx - 15, cy), (cx + 15, cy), 1)
             pygame.draw.line(screen, ACCENT_CYAN, (cx, cy - 15), (cx, cy + 15), 1)
             
-            coord_txt = self.font_cam.render(f"POS: {self.state.agent_pos}", True, ACCENT_CYAN)
+            coord_txt = self.font_cam.render(f"POS: {self.state.agent_pos}", True, ACCENT_RED)
             screen.blit(coord_txt, (cam_rect.left + 8, cam_rect.bottom - 20))
 
         else:
