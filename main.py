@@ -17,7 +17,7 @@ def main():
     try:
         # Ana ekran: hem harita hem kontrol paneli tek yüzeyde
         screen = pygame.display.set_mode((TOTAL_WIDTH, TOTAL_HEIGHT))
-        pygame.display.set_caption("Autonomous Vehicle + Control Panel")
+        pygame.display.set_caption("Autonomous Vehicle")
         clock = pygame.time.Clock()
     except AttributeError:
         print("Error: Missing constants in map.py.")
@@ -188,7 +188,7 @@ def main():
 
                 elif action == "CMD_FREEZE":
                     is_simulation_frozen = True
-                    ui.state.status_message = ">> TIME FROZEN <<"
+                    ui.state.status_message = "Time Frozen"
                 elif action == "CMD_RESUME":
                     is_simulation_frozen = False
                     ui.state.status_message = "Time Resumed"

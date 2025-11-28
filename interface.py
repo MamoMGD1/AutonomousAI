@@ -188,7 +188,7 @@ class Interface:
         y += gap
 
         # 2. Dinamik Alan (Başlat VEYA Git/İptal)
-        self.btn_start = Button(bx, y, bw, 42, "START AGENT", "CMD_START")
+        self.btn_start = Button(bx, y, bw, 42, "START SEARCH", "CMD_START")
         
         # Onay ve Red butonları (genişliği paylaşır)
         half_w = (bw - 10) // 2
@@ -270,7 +270,7 @@ class Interface:
             
             if btn.action_code == "CMD_CYCLE_ALGO":
                 btn.is_active = True
-                btn.draw(screen, self.font_btn, ACCENT_PURPLE, override_text=f"Algo: {self.state.selected_algorithm}")
+                btn.draw(screen, self.font_btn, ACCENT_PURPLE, override_text=f"Selected Algorithm: {self.state.selected_algorithm}")
                 continue
 
             if self.state.mode == 'ADD_OBSTACLE' and btn.action_code == "MODE_ADD": 
@@ -376,28 +376,34 @@ class Interface:
             last_label = "RESULT"
             last_val = "NO PATH"
 
+        # Column positions: adjust value_col_x to decrease/increase space between label and value
+        label_x = self.x_offset + 30
+        value_col_x = label_x + 140  # <-- reduce this to bring values closer, increase to push them right
         start_y = 60
+
         for i, (label, val) in enumerate(infos):
             lbl_surf = self.font_label.render(label, True, TXT_DIM)
-            screen.blit(lbl_surf, (self.x_offset + 30, start_y))
+            screen.blit(lbl_surf, (label_x, start_y))
             
             val_col = TXT_MAIN
-            if "REACHED" in str(val): val_col = ACCENT_GREEN
-            if "NO PATH" in str(val): val_col = ACCENT_RED
-            if "FROZEN" in str(val): val_col = ACCENT_CYAN
+            if "Reached" in str(val): val_col = ACCENT_GREEN
+            if "No Path" in str(val): val_col = ACCENT_RED
+            if "Frozen" in str(val): val_col = ACCENT_CYAN
             if "Waiting" in str(val) or "Approve?" in str(val): val_col = ACCENT_YELLOW
             
             val_str = str(val)
-            if len(val_str) > 18: val_str = val_str[:16] + ".."
+            # Allow longer visible text before truncating
+            if len(val_str) > 28:
+                val_str = val_str[:26] + ".."
             
             val_surf = self.font_log.render(val_str, True, val_col)
-            val_rect = val_surf.get_rect(topright=(self.x_offset + self.width - 30, start_y))
+            val_rect = val_surf.get_rect(topleft=(value_col_x, start_y))
             screen.blit(val_surf, val_rect)
             
             start_y += 20
 
         lbl_surf = self.font_label.render(last_label, True, TXT_DIM)
-        screen.blit(lbl_surf, (self.x_offset + 30, start_y + 4))
+        screen.blit(lbl_surf, (label_x, start_y + 4))
         
         val_col = TXT_MAIN
         if "REACHED" in last_val: val_col = ACCENT_GREEN
@@ -406,6 +412,7 @@ class Interface:
         elif "GREEN" in last_val: val_col = ACCENT_GREEN
         elif "YELLOW" in last_val: val_col = ACCENT_YELLOW
 
+        # Place final value in the same value column
         val_surf = self.font_btn.render(last_val, True, val_col)
-        val_rect = val_surf.get_rect(topright=(self.x_offset + self.width - 30, start_y + 4))
+        val_rect = val_surf.get_rect(topleft=(value_col_x, start_y + 4))
         screen.blit(val_surf, val_rect)
