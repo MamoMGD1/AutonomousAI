@@ -3,7 +3,7 @@
 ## 🧠 Introduction
 
 **AutonomousAI** is a modular AI simulation project developed for the _ISE315 – Introduction to Artificial Intelligence_ course.  
-It visualizes how an autonomous vehicle can perceive its surroundings, follow traffic rules, and plan routes using classical AI algorithms such as **DFS, BFS, Dijkstra, Greedy Best-First, and A\***.
+It visualizes how an autonomous vehicle can perceive its surroundings, follow traffic rules, and plan routes using classical AI algorithms such as **DFS, BFS, Greedy Best-First, and A\***.
 
 The goal is to create a miniature digital city where vehicles, pedestrians, and lights all coexist — showing how search algorithms and reactive decision-making work in real time.
 
@@ -56,7 +56,7 @@ Each phase builds on the previous one to ensure smooth integration and stability
 - File: `interface.py`
 - Tasks:
   - Add buttons and an information panel:
-    - **Add Car**, **Add Pedestrian**, **Pause**, **Resume**, **Start**, **Run**
+    - **Change Algorithm**, **Add Obstacle**, **Pause**, **Resume**, **Start**, **Run**
   - Display algorithm name, simulation status, and light timers.
   - Provide reset functionality while preserving start/end points.
 
@@ -66,7 +66,7 @@ Each phase builds on the previous one to ensure smooth integration and stability
 
 - File: `algorithm.py`
 - Tasks:
-  - Implement pathfinding algorithms: DFS, BFS, Greedy, A\*, and Dijkstra.
+  - Implement pathfinding algorithms: DFS, BFS, Greedy, and A\*.
   - Visualize search paths:
     - Yellow = exploration
     - Green = final optimal route
